@@ -1,12 +1,13 @@
 import os
 import cv2
 import numpy as np
-import ujson
 import time
 import face_recognition
 import stream_capture
 from PIL import Image
 from pdb import set_trace
+
+ANALYSE_EVERY_N_SECONDS=0.5
 
 def get_faces_in_picture(picture_route):
     image = face_recognition.load_image_file(picture_route)
@@ -126,27 +127,42 @@ def set_know_faces(know_faces):
     return None
 
 
+def identify_unknown_faces(unknown_faces):
+    i = 0
+    while i < len(unknown_faces):
+        actual_name, picture_route, _ = unknown_faces[i]
+        image = cv2.imread(picture_route)
+        cv2.imshow(actual_name, image)
+        cv2.waitKey(1)
+        new_name = input(f'Insert name for {actual_name}: ')
+        if new_name:
+            unknown_faces[i] = (new_name, picture_route, _)
+        i += 1
+    return None
+
+
 def do_work():
-    #stream = stream_capture.LiveStream(channel='tvn')
+    stream = stream_capture.LiveStream(channel='tvn')
     resolution = '360' # str(input(f'Insert a resolution: '))
     actual_second = 0
     frame_n = 0
-    know_faces = get_know_faces()
+    known_faces = get_know_faces()
     faces_stat = dict()
-    #streaming = stream.get_n_second_batches(resolution=resolution, seconds=60)
-    streaming = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
+    streaming = stream.get_n_second_batches(resolution=resolution, seconds=60)
+    # streaming = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
     for video in streaming:
         captures = get_frames_per_second(video, frame_n)
         frame_n += len(captures)
         for capture in captures:
-            faces, new_unknow_faces = detect_faces_name(capture, know_faces)
-            know_faces += new_unknow_faces
+            faces, new_unknown_faces = detect_faces_name(capture, known_faces)
+            identify_unknown_faces(new_unknown_faces)
+            known_faces += new_unknown_faces
             for face in faces:
                 if face not in faces_stat:
                     faces_stat[face] = list()
                 faces_stat[face].append(actual_second)
-            actual_second += 1
-    set_know_faces(know_faces)
+            actual_second += ANALYSE_EVERY_N_SECONDS
+    set_know_faces(known_faces)
     return faces_stat
 
 

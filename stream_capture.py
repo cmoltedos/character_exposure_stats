@@ -206,6 +206,13 @@ class LiveStream(object):
         response = self.rsession.get(url=url, params=params)
         result = response.text
         links_by_resolution = dict(re.findall("RESOLUTION=[0-9]{3,4}x([0-9]{3,4}).*?\n([a-zA-Z0-9:/\-\.&?=_%]+)", result, re.DOTALL))
+
+        for resolution, link in links_by_resolution.items():
+            if link.startswith('http'):
+                break
+            link_server = re.search("&es=(.*?)&", link, re.DOTALL).group(1)
+            links_by_resolution[resolution] = f'https://{link_server}{link}'
+
         resolutions = sorted(links_by_resolution.keys(), key=lambda x: int(x))
         print(f"[INFO] Available resolutions: {resolutions}")
         return links_by_resolution
@@ -260,10 +267,16 @@ class LiveStream(object):
         result_filename = f'result_{self.channel}_{self.channel_id}.ts'
         result_route = os.path.join(folder, result_filename)
         consume_ts_urls = set()
+        last_time = time.time()
         while total_time < seconds:
             with open(result_route, 'wb') as _:
                 pass
-            time.sleep(int(batch_time * 0.8))
+            actual_time = time.time()
+            seconds_between_last_batch = int(actual_time - last_time)
+            last_time = actual_time
+            sleep_time = int(batch_time * 0.8) - seconds_between_last_batch
+            if sleep_time > 0:
+                time.sleep(sleep_time)
             ts_urls, sec_each, key_uri = self.get_streaming_file_list(resolution)
             total_ts = len(set(ts_urls) - consume_ts_urls)
             if batch_time == 0:
