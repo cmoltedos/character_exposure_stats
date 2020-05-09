@@ -68,6 +68,7 @@ class Window(QtWidgets.QWidget):
         self.completer = QtWidgets.QCompleter(list(set(map(lambda x: x[1], self.know_faces))))
         self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.lineedit.setCompleter(self.completer)
+        self.lineedit.returnPressed.connect(self.save_new_name)
         group_layout.addWidget(self.lineedit)
         self.face = QtWidgets.QLabel(self)
         group_layout.addWidget(self.face)
@@ -102,16 +103,22 @@ class Window(QtWidgets.QWidget):
         del self.new_face
         self.set_unknown_face()
 
-    def set_recomendation(self, recomendation_id):
-        recomended_name = self.know_faces[recomendation_id][0]
-        self.lineedit.setText(recomended_name)
+    def set_recomendation(self, face_encoding):
+        values_list = [value for value in self.know_faces.values() if value[0] != 'Unknown']
+        if not values_list:
+            return None
+
+        known_face_names, know_face_location, known_face_encodings = zip(*values_list)
+        best_match_index, match_value = face_data.get_best_match(known_face_encodings, face_encoding)
+        if best_match_index:
+            recomended_name = known_face_names[best_match_index]
+            self.lineedit.setText(recomended_name)
 
     def set_unknown_face(self):
         if len(self.unknown_faces):
             self.new_face = self.unknown_faces.popitem()
             self.update_face_image(self.new_face[1][1])
-            if len(self.new_face[1]) > 3:
-                self.set_recomendation(self.new_face[1][-1])
+            self.set_recomendation(self.new_face[1][-1])
             self.create_button.setEnabled(True)
         else:
             self.create_button.setEnabled(False)
@@ -124,8 +131,7 @@ class Window(QtWidgets.QWidget):
                 self.stats[fid] = list()
             self.stats[fid].append(new_data[0])
         if len(new_data[2]):
-            new_faces = dict(map(lambda x: (x[0], x[1][:4]), new_data[2].items()))
-            self.know_faces.update(new_faces)
+            self.know_faces.update(new_data[2])
             self.unknown_faces.update(new_data[2])
             if not self.create_button.isEnabled():
                 self.set_unknown_face()
@@ -158,7 +164,7 @@ class Window(QtWidgets.QWidget):
 
     def update_face_image(self, picture_route):
         pixmap = QtGui.QPixmap(picture_route)
-        self.face.setPixmap(pixmap)
+        self.face.setPixmap(pixmap.scaled(100, 100, QtCore.Qt.KeepAspectRatio))
 
     def closeEvent(self, event):
         face_data.set_know_faces(self.know_faces)

@@ -62,6 +62,19 @@ def mark_faces_in_picture(picture_frame, locations, names):
     return picture_frame
 
 
+def get_best_match(known_face_encodings, face_encoding):
+    matches = face_recognition.compare_faces(known_face_encodings,
+                                             face_encoding)
+    face_distances = face_recognition.face_distance(known_face_encodings,
+                                                    face_encoding)
+    best_match_index = np.argmin(face_distances)
+
+    if matches[best_match_index]:
+        return (best_match_index, face_distances[best_match_index])
+    return (None, 1)
+
+
+
 def detect_faces_name(picture_data, known_faces):
     picture_route, picture_frame = picture_data
     picture = face_recognition.load_image_file(picture_route)
@@ -78,16 +91,12 @@ def detect_faces_name(picture_data, known_faces):
         name = f"Unknown"
         if len(known_face_encodings):
             # See if the face is a match for the known face(s)
-            matches = face_recognition.compare_faces(known_face_encodings,
-                                                     face_encoding)
-            face_distances = face_recognition.face_distance(known_face_encodings,
-                                                            face_encoding)
-            best_match_index = np.argmin(face_distances)
+            best_match_index, match_value = get_best_match(known_face_encodings, face_encoding)
         else:
+            match_value = 1
             best_match_index = None
 
-        if best_match_index is not None and matches[best_match_index] \
-                and face_distances[best_match_index] < 0.4:
+        if best_match_index is not None and match_value < 0.4:
             name = known_face_names[best_match_index]
             face_id = known_face_id[best_match_index]
         else:
@@ -100,8 +109,6 @@ def detect_faces_name(picture_data, known_faces):
             unknow_route = f'faces/{face_id}.jpg'
             pil_image.save(unknow_route, "JPEG")
             unknow_data = [name, unknow_route, face_encoding]
-            if best_match_index:
-                unknow_data += [known_face_id[best_match_index]] # similar one
             new_unknow_faces[face_id] = unknow_data
         face_id_and_names.append((face_id, name))
     capture_with_mark = mark_faces_in_picture(picture_frame, face_locations,
@@ -151,8 +158,7 @@ def do_work():
         while len(result_queue):
             capture_data = result_queue.pop()
             new_unknown_faces = capture_data[2]
-            new_data = dict(map(lambda x: (x[0], x[1][:4]), new_unknown_faces.items()))
-            known_faces.update(new_data)
+            known_faces.update(new_unknown_faces)
             cv2.imshow('TV', capture_data[-1])
             cv2.waitKey(1)
     process_stream_thread.join()
@@ -180,7 +186,7 @@ def yield_process_streaming(known_faces, streaming):
 
 def process_streaming(known_faces, streaming, result_queue):
     for result in yield_process_streaming(known_faces, streaming):
-        result_queue.append(result[:4])
+        result_queue.append(result)
     return None
 
 
