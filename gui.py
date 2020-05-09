@@ -10,20 +10,26 @@ class Thread(QtCore.QThread):
     changePixmap = QtCore.pyqtSignal(QtGui.QPixmap)
     new_data = QtCore.pyqtSignal(tuple)
 
-    def __init__(self, stream, known_faces):
+    def __init__(self, stream, known_faces, start_button):
         super(Thread, self).__init__()
         self.stream = stream
         self.known_faces = known_faces
-        self.stream_data = list()
         self._isRunning = False
+        self._isPause = False
+        self.start_button = start_button
 
     def run(self):
         self._isRunning = True
         result_yield = face_data.yield_process_streaming(
             known_faces=self.known_faces, streaming=self.stream
         )
-        for capture_data in result_yield:
-            if not self._isRunning:
+        while self._isRunning:
+            if self._isPause:
+                time.sleep(1)
+                continue
+            try:
+                capture_data = next(result_yield)
+            except StopIteration:
                 break
             rgbImage = face_data.get_rgb_image_from_frame(capture_data[-1])
             convertToQtFormat = QtGui.QImage(rgbImage.data, rgbImage.shape[1],
@@ -33,12 +39,19 @@ class Thread(QtCore.QThread):
             self.changePixmap.emit(convertToQtFormat)
             self.new_data.emit(capture_data)
             time.sleep(face_data.ANALYSE_EVERY_N_SECONDS)
+        self._isRunning = False
+        self.start_button.setText('Start')
 
     def stop(self):
+        self.start_button.setText('Start')
         self._isRunning = False
 
-    def continue_process(self):
-        self._isRunning = True
+    def pause_process(self):
+        if self.start_button.text() == 'Pause':
+            self.start_button.setText('Continue')
+        else:
+            self.start_button.setText('Pause')
+        self._isPause = not self._isPause
 
 
 class Window(QtWidgets.QWidget):
@@ -83,9 +96,9 @@ class Window(QtWidgets.QWidget):
         self.start_button = QtWidgets.QPushButton('Start')
         self.start_button.clicked.connect(self.start_capturing_stream)
         action_layout.addWidget(self.start_button)
-        self.pause_button = QtWidgets.QPushButton('Pause')
-        self.pause_button.clicked.connect(self.pause_capturing_stream)
-        action_layout.addWidget(self.pause_button)
+        self.stop_button = QtWidgets.QPushButton('Stop')
+        self.stop_button.clicked.connect(self.stop_capturing_stream)
+        action_layout.addWidget(self.stop_button)
         second_layout.addLayout(action_layout)
 
         layout.addLayout(second_layout)
@@ -139,19 +152,21 @@ class Window(QtWidgets.QWidget):
 
     def start_capturing_stream(self):
         channel = self.channel.currentText()
-        stream = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
-        self.streaming = Thread(stream=stream, known_faces=self.know_faces)
-        self.streaming.changePixmap.connect(self.add_tv_capture_image)
-        self.streaming.new_data.connect(self.capture_new_data)
-        self.streaming.start()
+        if self.start_button.text() != 'Start':
+            self.streaming.pause_process()
+        else:
+            self.start_button.setText('Pause')
+            stream = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
+            self.streaming = Thread(stream=stream, known_faces=self.know_faces,
+                                    start_button=self.start_button)
+            self.streaming.changePixmap.connect(self.add_tv_capture_image)
+            self.streaming.new_data.connect(self.capture_new_data)
+            self.streaming.start()
 
-    def pause_capturing_stream(self):
+    def stop_capturing_stream(self):
         if self.streaming is None:
             return None
-        if self.pause_button.text() == 'Pause':
-            self.streaming.stop()
-        else:
-            self.streaming.continue_process()
+        self.streaming.stop()
 
 
     def add_tv_capture_image(self, image):
