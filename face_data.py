@@ -1,11 +1,14 @@
-import os
+import os, sys
 import cv2
 import numpy as np
 import time
+import uuid
 import face_recognition
-import stream_capture
+import threading
 from PIL import Image
 from pdb import set_trace
+
+import stream_capture
 
 ANALYSE_EVERY_N_SECONDS=0.5
 
@@ -29,7 +32,7 @@ def get_frames_per_second(video_route, actual_image_counter=0):
         ret, frame = cam.read()
         if not ret:
             break
-        elif currentframe % fps == 0:
+        elif currentframe % (fps * ANALYSE_EVERY_N_SECONDS) == 0:
             # if video is still left continue creating images
             actual_image_counter += 1
             name = './data/frame%.8d.jpg' % actual_image_counter
@@ -41,12 +44,12 @@ def get_frames_per_second(video_route, actual_image_counter=0):
         currentframe += 1
     # Release all space and windows once done
     cam.release()
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
     return result_images
 
 
 def mark_faces_in_picture(picture_frame, locations, names):
-    for (top, right, bottom, left), name in zip(locations, names):
+    for (top, right, bottom, left), (fid, name) in zip(locations, names):
         # Draw a box around the face
         cv2.rectangle(picture_frame, (left, top), (right, bottom), (0, 0, 255), 2)
 
@@ -56,8 +59,7 @@ def mark_faces_in_picture(picture_frame, locations, names):
         font = cv2.FONT_HERSHEY_DUPLEX
         cv2.putText(picture_frame, name, (left + 6, bottom - 6), font, 1.0,
                     (255, 255, 255), 1)
-    cv2.imshow('Video', picture_frame)
-    cv2.waitKey(1)
+    return picture_frame
 
 
 def detect_faces_name(picture_data, known_faces):
@@ -65,15 +67,15 @@ def detect_faces_name(picture_data, known_faces):
     picture = face_recognition.load_image_file(picture_route)
     face_locations = face_recognition.face_locations(picture)
     face_encodings = face_recognition.face_encodings(picture, face_locations)
-    face_names = []
-    unknown_faces_amount = len(list(filter(lambda x: 'Unknown' in x[0], known_faces)))
-    new_unknow_faces = list()
+    face_id_and_names = list()
+    new_unknow_faces = dict()
     if known_faces:
-        known_face_names, know_face_location, known_face_encodings = zip(*known_faces)
+        known_face_id, values = zip(*known_faces.items())
+        known_face_names, know_face_location, known_face_encodings = zip(*values)
     else:
-        known_face_encodings, known_face_names = list(), list()
+        known_face_id, known_face_names, known_face_encodings = list(), list(), list()
     for face_encoding, face_location in zip(face_encodings, face_locations):
-        name = f"Unknown_{unknown_faces_amount+1}"
+        name = f"Unknown"
         if len(known_face_encodings):
             # See if the face is a match for the known face(s)
             matches = face_recognition.compare_faces(known_face_encodings,
@@ -87,83 +89,99 @@ def detect_faces_name(picture_data, known_faces):
         if best_match_index is not None and matches[best_match_index] \
                 and face_distances[best_match_index] < 0.4:
             name = known_face_names[best_match_index]
+            face_id = known_face_id[best_match_index]
         else:
-            unknown_faces_amount += 1
             top, right, bottom, left = face_location
-
             # You can access the actual face itself like this:
             face_image = picture[top:bottom, left:right]
             pil_image = Image.fromarray(face_image)
             os.makedirs('faces', exist_ok=True)
-            unknow_route = f'faces/{name}.jpg'
+            face_id = str(uuid.uuid4())
+            unknow_route = f'faces/{face_id}.jpg'
             pil_image.save(unknow_route, "JPEG")
-            new_unknow_faces.append((name, unknow_route, face_encoding))
-        face_names.append(name)
-    mark_faces_in_picture(picture_frame, face_locations, face_names)
-    return face_names, new_unknow_faces
+            unknow_data = [name, unknow_route, face_encoding]
+            if best_match_index:
+                unknow_data += [known_face_id[best_match_index]] # similar one
+            new_unknow_faces[face_id] = unknow_data
+        face_id_and_names.append((face_id, name))
+    capture_with_mark = mark_faces_in_picture(picture_frame, face_locations,
+                                              face_id_and_names)
+    return face_id_and_names, new_unknow_faces, capture_with_mark
 
 
 def get_know_faces():
-    know_faces = list()
+    know_faces = dict()
     if not os.path.exists('kwnow_faces_data.txt'):
         return know_faces
     with open('kwnow_faces_data.txt') as know_faces_file:
         for line in know_faces_file:
             data = line.strip().split(';;')
-            data_array = np.array(list(map(float, data[2].split(','))))
-            know_faces.append((data[0], data[1], data_array))
+            data_array = np.array(list(map(float, data[-1].split(','))))
+            know_faces[data[0]] = data[1:-1] + [data_array]
     return know_faces
 
 
 def set_know_faces(know_faces):
     with open('kwnow_faces_data.txt', 'w') as know_faces_file:
-        line_format = '{name};;{location};;{array}\n'
         for know_face in know_faces:
-            new_line = line_format.format(
-                name=know_face[0], location=know_face[1],
-                array=','.join(map(str, know_face[2]))
-            )
-            know_faces_file.write(new_line)
-    return None
-
-
-def identify_unknown_faces(unknown_faces):
-    i = 0
-    while i < len(unknown_faces):
-        actual_name, picture_route, _ = unknown_faces[i]
-        image = cv2.imread(picture_route)
-        cv2.imshow(actual_name, image)
-        cv2.waitKey(1)
-        new_name = input(f'Insert name for {actual_name}: ')
-        if new_name:
-            unknown_faces[i] = (new_name, picture_route, _)
-        i += 1
+            know_face_value = know_faces[know_face][:4]
+            array_image_str = ','.join(map(str, know_face_value[-1]))
+            new_line = ';;'.join([know_face]
+                                 + list(map(str, know_face_value[:-1]))
+                                 + [array_image_str])
+            know_faces_file.write(new_line + '\n')
     return None
 
 
 def do_work():
-    stream = stream_capture.LiveStream(channel='tvn')
+    #stream = stream_capture.LiveStream(channel='tvn')
     resolution = '360' # str(input(f'Insert a resolution: '))
+    #streaming = stream.get_n_second_batches(resolution=resolution)
+    streaming = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
+    known_faces = get_know_faces()
+    result_queue = list()
+    process_stream_thread = threading.Thread(
+        target=process_streaming, args=(known_faces, streaming, result_queue)
+    )
+    process_stream_thread.start()
+    while process_stream_thread.is_alive():
+        if not len(result_queue):
+            time.sleep(1)
+            continue
+        while len(result_queue):
+            capture_data = result_queue.pop()
+            new_unknown_faces = capture_data[2]
+            new_data = dict(map(lambda x: (x[0], x[1][:4]), new_unknown_faces.items()))
+            known_faces.update(new_data)
+            cv2.imshow('TV', capture_data[-1])
+            cv2.waitKey(1)
+    process_stream_thread.join()
+    set_know_faces(known_faces)
+    return None
+
+
+def get_rgb_image_from_frame(frame):
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
+def yield_process_streaming(known_faces, streaming):
     actual_second = 0
     frame_n = 0
-    known_faces = get_know_faces()
-    faces_stat = dict()
-    streaming = stream.get_n_second_batches(resolution=resolution, seconds=60)
-    # streaming = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
     for video in streaming:
         captures = get_frames_per_second(video, frame_n)
         frame_n += len(captures)
         for capture in captures:
-            faces, new_unknown_faces = detect_faces_name(capture, known_faces)
-            identify_unknown_faces(new_unknown_faces)
-            known_faces += new_unknown_faces
-            for face in faces:
-                if face not in faces_stat:
-                    faces_stat[face] = list()
-                faces_stat[face].append(actual_second)
+            capture_data = detect_faces_name(capture, known_faces)
+            # actual time, face id and names, new unknow faces (id, name, picture route, face encoding), frame with mark
+            time_data = (actual_second,) + capture_data
             actual_second += ANALYSE_EVERY_N_SECONDS
-    set_know_faces(known_faces)
-    return faces_stat
+            yield time_data
+
+
+def process_streaming(known_faces, streaming, result_queue):
+    for result in yield_process_streaming(known_faces, streaming):
+        result_queue.append(result[:4])
+    return None
 
 
 if __name__ == "__main__":
