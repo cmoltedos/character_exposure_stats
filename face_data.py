@@ -140,6 +140,15 @@ def set_know_faces(know_faces):
     return None
 
 
+def update_stats(stat_dict, new_data):
+    for data in new_data[1]:
+        fid = data[0]
+        if fid not in stat_dict:
+            stat_dict[fid] = list()
+        stat_dict[fid].append(new_data[0])
+    return None
+
+
 def do_work():
     #stream = stream_capture.LiveStream(channel='tvn')
     resolution = '360' # str(input(f'Insert a resolution: '))
@@ -150,6 +159,7 @@ def do_work():
     process_stream_thread = threading.Thread(
         target=process_streaming, args=(known_faces, streaming, result_queue)
     )
+    stat_dict = dict()
     process_stream_thread.start()
     while process_stream_thread.is_alive():
         if not len(result_queue):
@@ -158,6 +168,7 @@ def do_work():
         while len(result_queue):
             capture_data = result_queue.pop()
             new_unknown_faces = capture_data[2]
+            update_stats(stat_dict, capture_data[1])
             known_faces.update(new_unknown_faces)
             cv2.imshow('TV', capture_data[-1])
             cv2.waitKey(1)

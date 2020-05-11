@@ -138,11 +138,7 @@ class Window(QtWidgets.QWidget):
             self.face.clear()
 
     def capture_new_data(self, new_data):
-        for data in new_data[1]:
-            fid = data[0]
-            if fid not in self.stats:
-                self.stats[fid] = list()
-            self.stats[fid].append(new_data[0])
+        face_data.update_stats(self.stats, new_data)
         if len(new_data[2]):
             self.know_faces.update(new_data[2])
             self.unknown_faces.update(new_data[2])
