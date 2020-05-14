@@ -179,6 +179,8 @@ class Window(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         face_data.set_know_faces(self.know_faces)
+        face_data.save_stats(self.stats)
+        face_data.create_csv_race_bar_graphic_data(self.stats, self.know_faces)
 
 
 if __name__ == "__main__":

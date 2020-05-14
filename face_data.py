@@ -5,6 +5,7 @@ import time
 import uuid
 import face_recognition
 import threading
+import math
 from PIL import Image
 from pdb import set_trace
 
@@ -149,6 +150,48 @@ def update_stats(stat_dict, new_data):
     return None
 
 
+def save_stats(stat_dict):
+    stat_filename = 'stat_data.txt'
+    with open(stat_filename, 'w') as stat_file:
+        for stat_key, stat_value in stat_dict.items():
+            line = f"{str(stat_key)}::{','.join(map(str, stat_value))}\n"
+            stat_file.write(line)
+    return stat_filename
+
+
+def get_stats_data_from_file(stat_filename):
+    stat_dict = dict()
+    with open(stat_filename) as stat_file:
+        for line in stat_file:
+            content = line.strip().split('::')
+            stat_dict[content[0]] = list(map(float, content[1].split(',')))
+    return stat_dict
+
+
+def create_csv_race_bar_graphic_data(stat_dict, know_faces, sec_window=10):
+    result_filename = 'race_bar_data.csv'
+    max_second = max(map(max, stat_dict.values()))
+    stat_faces_id = list(stat_dict.keys())
+    stat_faces_names = list(map(lambda x: know_faces[x][0], stat_faces_id))
+    name_stats = dict()
+    for face_name, face_id in zip(stat_faces_names, stat_faces_id):
+        if face_name not in name_stats:
+            name_stats[face_name] = list()
+        name_stats[face_name] += stat_dict[face_id]
+    list(map(lambda x: x.sort(), name_stats.values()))
+    header = ['Person'] + list(map(str, range(math.ceil(max_second/sec_window))))
+    with open(result_filename, 'w') as result_file:
+        result_file.write(','.join(header) + '\n')
+        for face_name, times in name_stats.items():
+            line_list = [0] * math.ceil(max_second/sec_window)
+            for second in times:
+                block_i = int(second/sec_window)
+                line_list[block_i] += ANALYSE_EVERY_N_SECONDS
+            line_list = [face_name] + list(map(str, line_list))
+            result_file.write(','.join(line_list) + '\n')
+    return result_filename
+
+
 def do_work():
     #stream = stream_capture.LiveStream(channel='tvn')
     resolution = '360' # str(input(f'Insert a resolution: '))
@@ -201,5 +244,12 @@ def process_streaming(known_faces, streaming, result_queue):
     return None
 
 
+def do_analysis():
+    stat_dict = get_stats_data_from_file('stat_data.txt')
+    known_faces_dict = get_know_faces()
+    create_csv_race_bar_graphic_data(stat_dict, known_faces_dict)
+
+
 if __name__ == "__main__":
-    do_work()
+    # do_work()
+    do_analysis()
