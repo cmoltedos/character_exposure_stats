@@ -7,7 +7,7 @@ import PyQt5.QtCore as QtCore
 import face_data
 
 class Thread(QtCore.QThread):
-    changePixmap = QtCore.pyqtSignal(QtGui.QPixmap)
+    changePixmap = QtCore.pyqtSignal(str)#QtGui.QPixmap)
     new_data = QtCore.pyqtSignal(tuple)
 
     def __init__(self, stream, known_faces, start_button):
@@ -31,14 +31,15 @@ class Thread(QtCore.QThread):
                 capture_data = next(result_yield)
             except StopIteration:
                 break
-            rgbImage = face_data.get_rgb_image_from_frame(capture_data[-1])
-            convertToQtFormat = QtGui.QImage(rgbImage.data, rgbImage.shape[1],
-                                             rgbImage.shape[0],
-                                             QtGui.QImage.Format_RGB888)
-            convertToQtFormat = QtGui.QPixmap.fromImage(convertToQtFormat)
+            # rgbImage = face_data.get_rgb_image_from_frame(capture_data[-1])
+            # convertToQtFormat = QtGui.QImage(rgbImage.data, rgbImage.shape[1],
+            #                                  rgbImage.shape[0],
+            #                                  QtGui.QImage.Format_RGB888)
+            # convertToQtFormat = QtGui.QPixmap.fromImage(convertToQtFormat)
+            convertToQtFormat = face_data.create_image_from_frame('test.jpg', capture_data[-1])
             self.changePixmap.emit(convertToQtFormat)
             self.new_data.emit(capture_data)
-            time.sleep(face_data.ANALYSE_EVERY_N_SECONDS)
+            #time.sleep(face_data.ANALYSE_EVERY_N_SECONDS)
         self._isRunning = False
         self.start_button.setText('Start')
 
@@ -152,7 +153,7 @@ class Window(QtWidgets.QWidget):
             self.streaming.pause_process()
         else:
             self.start_button.setText('Pause')
-            stream = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
+            stream = ['result_13_b859e668b266815bf6771bf001ee2ddd.ts']
             self.streaming = Thread(stream=stream, known_faces=self.know_faces,
                                     start_button=self.start_button)
             self.streaming.changePixmap.connect(self.add_tv_capture_image)

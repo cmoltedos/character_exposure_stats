@@ -27,7 +27,6 @@ def get_frames_per_second(video_route, actual_image_counter=0):
         print('Error: Creating directory of data')
     fps = cam.get(cv2.CAP_PROP_FPS)
     currentframe = 0
-    result_images = list()
     while (True):
         # reading from frame
         ret, frame = cam.read()
@@ -40,13 +39,17 @@ def get_frames_per_second(video_route, actual_image_counter=0):
             print('Creating: ' + name)
             # writing the extracted images
             cv2.imwrite(name, frame)
-            result_images.append((name, frame))
+            yield (name, frame)
         # increasing counter so that it will show how many frames are created
         currentframe += 1
     # Release all space and windows once done
     cam.release()
     # cv2.destroyAllWindows()
-    return result_images
+
+
+def create_image_from_frame(result_route, frame):
+    cv2.imwrite(result_route, frame)
+    return result_route
 
 
 def mark_faces_in_picture(picture_frame, locations, names):
@@ -170,7 +173,10 @@ def get_stats_data_from_file(stat_filename):
 
 def create_csv_race_bar_graphic_data(stat_dict, know_faces, sec_window=10):
     result_filename = 'race_bar_data.csv'
-    max_second = max(map(max, stat_dict.values()))
+    max_seconds_per_id = list(map(max, stat_dict.values()))
+    if not max_seconds_per_id:
+        return None
+    max_second = max(max_seconds_per_id)
     stat_faces_id = list(stat_dict.keys())
     stat_faces_names = list(map(lambda x: know_faces[x][0], stat_faces_id))
     name_stats = dict()
@@ -187,7 +193,11 @@ def create_csv_race_bar_graphic_data(stat_dict, know_faces, sec_window=10):
             for second in times:
                 block_i = int(second/sec_window)
                 line_list[block_i] += ANALYSE_EVERY_N_SECONDS
+            # cumulative sum
+            for i in range(1, len(line_list)):
+                line_list[i] += line_list[i-1]
             line_list = [face_name] + list(map(str, line_list))
+
             result_file.write(','.join(line_list) + '\n')
     return result_filename
 
@@ -196,7 +206,7 @@ def do_work():
     #stream = stream_capture.LiveStream(channel='tvn')
     resolution = '360' # str(input(f'Insert a resolution: '))
     #streaming = stream.get_n_second_batches(resolution=resolution)
-    streaming = ['result_tvn_57a498c4d7b86d600e5461cb.ts']
+    streaming = ['result_13_b859e668b266815bf6771bf001ee2ddd.ts']
     known_faces = get_know_faces()
     result_queue = list()
     process_stream_thread = threading.Thread(
@@ -209,9 +219,10 @@ def do_work():
             time.sleep(1)
             continue
         while len(result_queue):
-            capture_data = result_queue.pop()
+            capture_data = result_queue[0]
+            del result_queue[0]
             new_unknown_faces = capture_data[2]
-            update_stats(stat_dict, capture_data[1])
+            update_stats(stat_dict, capture_data)
             known_faces.update(new_unknown_faces)
             cv2.imshow('TV', capture_data[-1])
             cv2.waitKey(1)
@@ -228,9 +239,8 @@ def yield_process_streaming(known_faces, streaming):
     actual_second = 0
     frame_n = 0
     for video in streaming:
-        captures = get_frames_per_second(video, frame_n)
-        frame_n += len(captures)
-        for capture in captures:
+        for capture in get_frames_per_second(video, frame_n):
+            frame_n += 1
             capture_data = detect_faces_name(capture, known_faces)
             # actual time, face id and names, new unknow faces (id, name, picture route, face encoding), frame with mark
             time_data = (actual_second,) + capture_data
