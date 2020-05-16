@@ -8,7 +8,7 @@ import face_data
 
 class Thread(QtCore.QThread):
     changePixmap = QtCore.pyqtSignal(str)#QtGui.QPixmap)
-    new_data = QtCore.pyqtSignal(tuple)
+    new_data = QtCore.pyqtSignal(list)
 
     def __init__(self, stream, known_faces, start_button):
         super(Thread, self).__init__()
@@ -38,7 +38,7 @@ class Thread(QtCore.QThread):
             # convertToQtFormat = QtGui.QPixmap.fromImage(convertToQtFormat)
             convertToQtFormat = face_data.create_image_from_frame('test.jpg', capture_data[-1])
             self.changePixmap.emit(convertToQtFormat)
-            self.new_data.emit(capture_data)
+            self.new_data.emit(capture_data[0])
             #time.sleep(face_data.ANALYSE_EVERY_N_SECONDS)
         self._isRunning = False
         self.start_button.setText('Start')
@@ -54,13 +54,16 @@ class Thread(QtCore.QThread):
             self.start_button.setText('Pause')
         self._isPause = not self._isPause
 
+    def is_pause(self):
+        return self._isPause
+
 
 class Window(QtWidgets.QWidget):
     def __init__(self):
         QtWidgets.QWidget.__init__(self)
         self.streaming = None
-        self.know_faces = face_data.get_know_faces()
-        self.unknown_faces = dict()
+        self.know_persons = face_data.get_know_faces()
+        self.unknown_faces = list()
         self.stats = dict()
         self.create_layout()
 
@@ -79,16 +82,19 @@ class Window(QtWidgets.QWidget):
         group = QtWidgets.QGroupBox("New face:")
         group_layout = QtWidgets.QVBoxLayout()
         self.lineedit = QtWidgets.QLineEdit()
-        self.completer = QtWidgets.QCompleter(list(set(map(lambda x: x[1], self.know_faces))))
+        self.completer = QtWidgets.QCompleter(list(set(self.know_persons)))
         self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.lineedit.setCompleter(self.completer)
-        self.lineedit.returnPressed.connect(self.save_new_name)
+        #self.lineedit.returnPressed.connect(self.save_new_name)
         group_layout.addWidget(self.lineedit)
         self.face = QtWidgets.QLabel(self)
         group_layout.addWidget(self.face)
+        self.recommendation_percent = QtWidgets.QLabel(self)
+        group_layout.addWidget(self.recommendation_percent)
         self.create_button = QtWidgets.QPushButton('Save')
         self.create_button.setEnabled(False)
         self.create_button.clicked.connect(self.save_new_name)
+        self.lineedit.returnPressed.connect(self.create_button.click)
         group_layout.addWidget(self.create_button)
         group.setLayout(group_layout)
         second_layout.addWidget(group)
@@ -106,43 +112,39 @@ class Window(QtWidgets.QWidget):
         self.setLayout(layout)
 
     def save_new_name(self):
-        new_face = self.new_face
-        new_face_id = new_face[0]
-        new_face_values = new_face[1]
         new_name = self.lineedit.text()
-        self.know_faces[new_face_id] = [new_name, new_face_values[1], new_face_values[2]]
+        if new_name not in self.know_persons:
+            new_person = face_data.Person(name=new_name)
+            self.know_persons[new_name] = new_person
+        self.know_persons[new_name].add_face(self.new_face)
         self.lineedit.setText('')
         model = self.completer.model()
-        model.setStringList(list(set(map(lambda x: x[0], self.know_faces.values()))))
-        del self.new_face
+        model.setStringList(list(set(self.know_persons)))
         self.set_unknown_face()
 
-    def set_recomendation(self, face_encoding):
-        values_list = [value for value in self.know_faces.values() if value[0] != 'Unknown']
-        if not values_list:
-            return None
-
-        known_face_names, know_face_location, known_face_encodings = zip(*values_list)
-        best_match_index, match_value = face_data.get_best_match(known_face_encodings, face_encoding)
-        if best_match_index:
-            recomended_name = known_face_names[best_match_index]
-            self.lineedit.setText(recomended_name)
+    def set_recomendation(self):
+        if self.new_face.recommendation:
+            percent = round(100 - self.new_face.recommendation[0]*100, 2)
+            self.recommendation_percent.setText(str(percent) + ' %')
+            self.lineedit.setText(self.new_face.recommendation[1].person.name)
 
     def set_unknown_face(self):
         if len(self.unknown_faces):
-            self.new_face = self.unknown_faces.popitem()
-            self.update_face_image(self.new_face[1][1])
-            self.set_recomendation(self.new_face[1][-1])
+            self.new_face = self.unknown_faces[0]
+            del self.unknown_faces[0]
+            self.update_face_image(self.new_face.face_picture_route)
+            self.set_recomendation()
             self.create_button.setEnabled(True)
         else:
             self.create_button.setEnabled(False)
             self.face.clear()
+            self.recommendation_percent.clear()
+            if self.streaming.is_pause():
+                self.streaming.pause_process()
 
     def capture_new_data(self, new_data):
-        face_data.update_stats(self.stats, new_data)
-        if len(new_data[2]):
-            self.know_faces.update(new_data[2])
-            self.unknown_faces.update(new_data[2])
+        if len(new_data):
+            self.unknown_faces += new_data
             if not self.create_button.isEnabled():
                 self.set_unknown_face()
         return None
@@ -154,7 +156,8 @@ class Window(QtWidgets.QWidget):
         else:
             self.start_button.setText('Pause')
             stream = ['result_13_b859e668b266815bf6771bf001ee2ddd.ts']
-            self.streaming = Thread(stream=stream, known_faces=self.know_faces,
+            know_faces = [face for person in self.know_persons.values() for face in person.faces]
+            self.streaming = Thread(stream=stream, known_faces=know_faces,
                                     start_button=self.start_button)
             self.streaming.changePixmap.connect(self.add_tv_capture_image)
             self.streaming.new_data.connect(self.capture_new_data)
@@ -179,9 +182,9 @@ class Window(QtWidgets.QWidget):
         self.face.setPixmap(pixmap.scaled(100, 100, QtCore.Qt.KeepAspectRatio))
 
     def closeEvent(self, event):
-        face_data.set_know_faces(self.know_faces)
-        face_data.save_stats(self.stats)
-        face_data.create_csv_race_bar_graphic_data(self.stats, self.know_faces)
+        face_data.set_know_faces(self.know_persons)
+        face_data.save_stats(self.know_persons)
+        face_data.create_csv_race_bar_graphic_data(self.know_persons)
 
 
 if __name__ == "__main__":
