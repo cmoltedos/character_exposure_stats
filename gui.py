@@ -68,12 +68,7 @@ class Window(QtWidgets.QWidget):
         self.create_layout()
 
     def create_layout(self):
-        layout = QtWidgets.QHBoxLayout()
-
-        self.tv_screen = QtWidgets.QLabel(self)
-        layout.addWidget(self.tv_screen)
-
-        second_layout = QtWidgets.QVBoxLayout()
+        main_layout = QtWidgets.QVBoxLayout()
 
         file_layout = QtWidgets.QHBoxLayout()
         self.video = QtWidgets.QLineEdit()
@@ -88,7 +83,14 @@ class Window(QtWidgets.QWidget):
         toolButtonOpenDialog.setText("...")
         toolButtonOpenDialog.clicked.connect(self.set_video)
         file_layout.addWidget(toolButtonOpenDialog)
-        second_layout.addLayout(file_layout)
+        main_layout.addLayout(file_layout)
+
+        layout = QtWidgets.QHBoxLayout()
+
+        self.tv_screen = QtWidgets.QLabel(self)
+        layout.addWidget(self.tv_screen)
+
+        second_layout = QtWidgets.QVBoxLayout()
 
         group = QtWidgets.QGroupBox("New face:")
         group_layout = QtWidgets.QVBoxLayout()
@@ -112,18 +114,25 @@ class Window(QtWidgets.QWidget):
 
         action_layout = QtWidgets.QHBoxLayout()
         self.start_button = QtWidgets.QPushButton('Start')
+        self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.start_capturing_stream)
         action_layout.addWidget(self.start_button)
         self.stop_button = QtWidgets.QPushButton('Stop')
+        self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_capturing_stream)
         action_layout.addWidget(self.stop_button)
         second_layout.addLayout(action_layout)
 
         layout.addLayout(second_layout)
-        self.setLayout(layout)
+
+        main_layout.addLayout(layout)
+
+        self.setLayout(main_layout)
 
     def set_video(self):
-        self.video.setText(str(QtWidgets.QFileDialog.getOpenFileName(self, 'Open File')))
+        self.video.setText(str(QtWidgets.QFileDialog.getOpenFileName(self, 'Open File')[0]))
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(True)
 
     def save_new_name(self):
         new_name = self.lineedit.text()
