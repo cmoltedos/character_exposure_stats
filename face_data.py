@@ -10,8 +10,6 @@ import shutil
 from PIL import Image
 from pdb import set_trace
 
-import stream_capture
-
 ANALYSE_EVERY_N_SECONDS=0.5
 UNKONWN_FACES_DIR = 'unknown_faces'
 KNOWN_FACES_DIR = 'known_faces'
@@ -255,7 +253,7 @@ def create_csv_race_bar_graphic_data(know_persons, sec_window=10):
     max_second = 0
     name_stats = dict()
     for person in know_persons.values():
-        max_second_p = max(person.timings)
+        max_second_p = max(person.timings) if person.timings else 0
         if max_second_p > max_second:
             max_second = max_second_p
         name_stats[person.name] = sorted(person.timings)

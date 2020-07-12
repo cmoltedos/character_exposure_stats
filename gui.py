@@ -75,9 +75,20 @@ class Window(QtWidgets.QWidget):
 
         second_layout = QtWidgets.QVBoxLayout()
 
-        self.channel = QtWidgets.QComboBox()
-        self.channel.addItems(['13', 'TVN', 'Mega', 'CHV'])
-        second_layout.addWidget(self.channel)
+        file_layout = QtWidgets.QHBoxLayout()
+        self.video = QtWidgets.QLineEdit()
+        self.video.setEnabled(False)
+        self.video.setGeometry(QtCore.QRect(10, 10, 191, 20))
+        self.video.setObjectName("FileName")
+        self.video.setFixedWidth(400)
+        file_layout.addWidget(self.video)
+        toolButtonOpenDialog = QtWidgets.QToolButton(self)
+        toolButtonOpenDialog.setGeometry(QtCore.QRect(210, 10, 25, 19))
+        toolButtonOpenDialog.setObjectName("FileSelector")
+        toolButtonOpenDialog.setText("...")
+        toolButtonOpenDialog.clicked.connect(self.set_video)
+        file_layout.addWidget(toolButtonOpenDialog)
+        second_layout.addLayout(file_layout)
 
         group = QtWidgets.QGroupBox("New face:")
         group_layout = QtWidgets.QVBoxLayout()
@@ -110,6 +121,9 @@ class Window(QtWidgets.QWidget):
 
         layout.addLayout(second_layout)
         self.setLayout(layout)
+
+    def set_video(self):
+        self.video.setText(str(QtWidgets.QFileDialog.getOpenFileName(self, 'Open File')))
 
     def save_new_name(self):
         new_name = self.lineedit.text()
@@ -150,12 +164,12 @@ class Window(QtWidgets.QWidget):
         return None
 
     def start_capturing_stream(self):
-        channel = self.channel.currentText()
+        video = self.video.text()
         if self.start_button.text() != 'Start':
             self.streaming.pause_process()
         else:
             self.start_button.setText('Pause')
-            stream = ['result_13_b859e668b266815bf6771bf001ee2ddd.ts']
+            stream = [video]
             know_faces = [face for person in self.know_persons.values() for face in person.faces]
             self.streaming = Thread(stream=stream, known_faces=know_faces,
                                     start_button=self.start_button)
