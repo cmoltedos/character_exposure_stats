@@ -1,21 +1,23 @@
 # Character appereance stats on videos
 Program to measure character exposure in videos.
-The actual metric only include face recognition stat:
+The actual exposure metric is the amount of seconds of a face is on the screen.
+We aim to calculate exposure base on the amount of seconds a character face appear 
+speaking on screen (T_1), plus the amount of seconds the character 
+is speaking but his face not appear in the screen divide but a 
+coefficient of 2 (T_2) , plus the amount of seconds 
+a character face appear in the screen without speaking divide but a 
+coefficient of 2 (T_3)
 
-$$Exposure = face_on_screen$$
+![equation](https://latex.codecogs.com/png.latex?Exposure=T_1&plus;\frac{T_2}{2}&plus;\frac{T_3}{2})
 
-We aim to calculate exposure base on:
-
-$$Exposure = (face_on_screen_and_speaking + speaking_but_not_in_screen/2 + face_on_screen_not_speaking/2)$$
-
-##TODO:
+## TODO:
 - [x] Detect [face recognition](https://github.com/ageitgey/face_recognition) in video
 - [x] Populate faces recognition live
 - [x] Generate stats to visualize results with a Race Bar Chart in [flourish](https://app.flourish.studio/@flourish/bar-chart-race)
 - [ ] Used GPU to compute face match
 - [ ] Incorporate voice recognition
 
-##Documentation (inspiration):
+## Documentation (inspiration):
 * https://medium.com/@ageitgey/machine-learning-is-fun-part-4-modern-face-recognition-with-deep-learning-c3cffc121d78
 * https://www.pyimagesearch.com/2018/06/18/face-recognition-with-opencv-python-and-deep-learning/
 * https://towardsdatascience.com/how-to-do-everything-in-computer-vision-2b442c469928
